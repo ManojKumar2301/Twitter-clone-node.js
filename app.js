@@ -1,39 +1,39 @@
-const express = require("express");
-const { open } = require("sqlite");
-const sqlite3 = require("sqlite3");
-const path = require("path");
-const bcrypt = require("bcrypt");
-const jwt = require("jsonwebtoken");
+const express = require('express')
+const {open} = require('sqlite')
+const sqlite3 = require('sqlite3')
+const path = require('path')
+const bcrypt = require('bcrypt')
+const jwt = require('jsonwebtoken')
 
-const app = express();
-app.use(express.json());
+const app = express()
+app.use(express.json())
 
-const SALT_ROUNDS_FOR_PASSWORD_HASHING = 10;
-const AUTHORIZATION_SECRET_FOR_JWT = "AUTHORIZATION_KEY";
+const SALT_ROUNDS_FOR_PASSWORD_HASHING = 10
+const AUTHORIZATION_SECRET_FOR_JWT = 'AUTHORIZATION_KEY'
 
-const twitterCloneDatabaseFilePath = path.join(__dirname, "twitterClone.db");
-const sqliteDriver = sqlite3.Database;
+const twitterCloneDatabaseFilePath = path.join(__dirname, 'twitterClone.db')
+const sqliteDriver = sqlite3.Database
 
-let twitterCloneDBConnectionObj = null;
+let twitterCloneDBConnectionObj = null
 
 const initializeDBAndServer = async () => {
   try {
     twitterCloneDBConnectionObj = await open({
       filename: twitterCloneDatabaseFilePath,
       driver: sqliteDriver,
-    });
+    })
 
     app.listen(3000, () => {
-      console.log("Server running and listening on port 3000 !");
-      console.log("Base URL - http://localhost:3000");
-    });
+      console.log('Server running and listening on port 3000 !')
+      console.log('Base URL - http://localhost:3000')
+    })
   } catch (exception) {
-    console.log(`Error initializing database or server: ${exception.message}`);
-    process.exit(1);
+    console.log(`Error initializing database or server: ${exception.message}`)
+    process.exit(1)
   }
-};
+}
 
-initializeDBAndServer();
+initializeDBAndServer()
 
 /*
     Function Name : isTweetPostedByLoggedInUser
@@ -46,11 +46,11 @@ initializeDBAndServer();
     upon the call to "next".  
 */
 const isTweetPostedByLoggedInUser = async (req, res, next) => {
-  const { username } = req;
-  const { tweetId } = req.params;
+  const {username} = req
+  const {tweetId} = req.params
 
-  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username);
-  const userId = loggedInUserDetails.user_id;
+  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username)
+  const userId = loggedInUserDetails.user_id
 
   const queryToGetSpecificTweetDataPostedByLoggedInUser = `
     SELECT *
@@ -59,20 +59,21 @@ const isTweetPostedByLoggedInUser = async (req, res, next) => {
         tweet_id = ${tweetId}
         AND
         user_id = ${userId};
-    `;
+    `
 
-  const specificTweetDataPostedByLoggedInUser = await twitterCloneDBConnectionObj.get(
-    queryToGetSpecificTweetDataPostedByLoggedInUser
-  );
+  const specificTweetDataPostedByLoggedInUser =
+    await twitterCloneDBConnectionObj.get(
+      queryToGetSpecificTweetDataPostedByLoggedInUser,
+    )
   if (specificTweetDataPostedByLoggedInUser === undefined) {
-    res.status(401);
-    res.send("Invalid Request");
+    res.status(401)
+    res.send('Invalid Request')
   } else {
-    next(); // Gives control to the next middleware
+    next() // Gives control to the next middleware
     // or handler of the intended request
     // handler.
   }
-};
+}
 
 /*
     Function Name : isTweetPostedByAFollowingUser
@@ -88,22 +89,19 @@ const isTweetPostedByLoggedInUser = async (req, res, next) => {
     request handler upon the call to "next".          
 */
 const isTweetPostedByAFollowingUser = async (req, res, next) => {
-  const { username } = req;
-  const { tweetId } = req.params;
+  const {username} = req
+  const {tweetId} = req.params
 
-  const listOfFollowingUserIdObjects = await getListOfFollowingUserIdObjectsForSpecificUser(
-    username
-  );
+  const listOfFollowingUserIdObjects =
+    await getListOfFollowingUserIdObjectsForSpecificUser(username)
 
   // Extract user ids from the objects as strings
   // and combine all into a single string to be used
   // in the following query
   const listOfFollowingUserIdsAsStrings = listOfFollowingUserIdObjects.map(
-    (currentUserIdObj) => currentUserIdObj.following_user_id.toString()
-  );
-  const stringOfAllFollowingUserIds = listOfFollowingUserIdsAsStrings.join(
-    ", "
-  );
+    currentUserIdObj => currentUserIdObj.following_user_id.toString(),
+  )
+  const stringOfAllFollowingUserIds = listOfFollowingUserIdsAsStrings.join(', ')
 
   const queryToGetSpecificTweetData = `
     SELECT
@@ -114,20 +112,20 @@ const isTweetPostedByAFollowingUser = async (req, res, next) => {
         tweet_id = ${tweetId}
         AND
         user_id IN (${stringOfAllFollowingUserIds});
-    `;
+    `
 
   const specificTweetData = await twitterCloneDBConnectionObj.get(
-    queryToGetSpecificTweetData
-  );
+    queryToGetSpecificTweetData,
+  )
   if (specificTweetData === undefined) {
-    res.status(401);
-    res.send("Invalid Request");
+    res.status(401)
+    res.send('Invalid Request')
   } else {
     // Tweet posted by a following user
-    req.requestedTweetData = specificTweetData;
-    next();
+    req.requestedTweetData = specificTweetData
+    next()
   }
-};
+}
 
 /*
     Function Name : checkUserRequestAuthorization
@@ -138,36 +136,34 @@ const isTweetPostedByAFollowingUser = async (req, res, next) => {
     Token value in the request header
 */
 const checkUserRequestAuthorization = async (req, res, next) => {
-  const authorizationHeaderValue = req.headers.authorization;
+  const authorizationHeaderValue = req.headers.authorization
   if (authorizationHeaderValue === undefined) {
     // No authorization header has been
     // passed in the http request
-    res.status(401);
-    res.send("Invalid JWT Token");
+    res.status(401)
+    res.send('Invalid JWT Token')
   } else {
-    const jsonWebTokenFromRequestHeader = authorizationHeaderValue.split(
-      " "
-    )[1];
+    const jsonWebTokenFromRequestHeader = authorizationHeaderValue.split(' ')[1]
     await jwt.verify(
       jsonWebTokenFromRequestHeader,
       AUTHORIZATION_SECRET_FOR_JWT,
       (verificationError, userIdentifiablePayload) => {
         if (verificationError) {
           // Incorrect JSON Web Token
-          res.status(401);
-          res.send("Invalid JWT Token");
+          res.status(401)
+          res.send('Invalid JWT Token')
         } else {
           // Authorization Check Pass !
-          const { username } = userIdentifiablePayload;
-          req.username = username;
-          next(); // Gives execution control to the next middleware
+          const {username} = userIdentifiablePayload
+          req.username = username
+          next() // Gives execution control to the next middleware
           // or handler method of the HTTP request method
           // that invoked this middleware.
         }
-      }
-    );
+      },
+    )
   }
-};
+}
 
 /*
     Function Name          : getSpecificUserDetailsFromDB
@@ -183,7 +179,7 @@ const checkUserRequestAuthorization = async (req, res, next) => {
                  keyword with this function's call, as this
                  function is also async.                        
 */
-const getSpecificUserDetailsFromDB = async (specificUsername) => {
+const getSpecificUserDetailsFromDB = async specificUsername => {
   const queryToGetSpecificUserDetails = `
     SELECT
         *
@@ -191,13 +187,13 @@ const getSpecificUserDetailsFromDB = async (specificUsername) => {
         user
     WHERE
         username = '${specificUsername}';
-    `;
+    `
 
   const specificUserDetails = await twitterCloneDBConnectionObj.get(
-    queryToGetSpecificUserDetails
-  );
-  return specificUserDetails;
-};
+    queryToGetSpecificUserDetails,
+  )
+  return specificUserDetails
+}
 
 /*
     Function Name          : getListOfFollowingUserIdObjectsForSpecificUser
@@ -214,29 +210,27 @@ const getSpecificUserDetailsFromDB = async (specificUsername) => {
                  await keyword with this function's call, as this
                  function is also async.                        
 */
-const getListOfFollowingUserIdObjectsForSpecificUser = async (
-  specificUsername
-) => {
-  const specificUserDetails = await getSpecificUserDetailsFromDB(
-    specificUsername
-  );
-  const { user_id } = specificUserDetails;
+const getListOfFollowingUserIdObjectsForSpecificUser =
+  async specificUsername => {
+    const specificUserDetails =
+      await getSpecificUserDetailsFromDB(specificUsername)
+    const {user_id} = specificUserDetails
 
-  const queryToFetchFollowingUserIDs = `
+    const queryToFetchFollowingUserIDs = `
                 SELECT
                     following_user_id
                 FROM
                     follower
                 WHERE
                     follower_user_id = ${user_id};
-                `;
+                `
 
-  const listOfFollowingUserIdObjects = await twitterCloneDBConnectionObj.all(
-    queryToFetchFollowingUserIDs
-  );
+    const listOfFollowingUserIdObjects = await twitterCloneDBConnectionObj.all(
+      queryToFetchFollowingUserIDs,
+    )
 
-  return listOfFollowingUserIdObjects;
-};
+    return listOfFollowingUserIdObjects
+  }
 
 /*
     Function Name   : isExistingUser
@@ -247,24 +241,23 @@ const getListOfFollowingUserIdObjectsForSpecificUser = async (
     Description: Function to check if a user exists
                  with the given username.
 */
-const isExistingUser = async (inputUsername) => {
+const isExistingUser = async inputUsername => {
   let existingUserCheckResult = {
     userExists: true,
     existingUserData: {},
-  };
-
-  const existingUserDataFromDB = await getSpecificUserDetailsFromDB(
-    inputUsername
-  );
-
-  if (existingUserDataFromDB !== undefined) {
-    existingUserCheckResult.existingUserData = existingUserDataFromDB;
-  } else {
-    existingUserCheckResult.userExists = false;
   }
 
-  return existingUserCheckResult;
-};
+  const existingUserDataFromDB =
+    await getSpecificUserDetailsFromDB(inputUsername)
+
+  if (existingUserDataFromDB !== undefined) {
+    existingUserCheckResult.existingUserData = existingUserDataFromDB
+  } else {
+    existingUserCheckResult.userExists = false
+  }
+
+  return existingUserCheckResult
+}
 
 /*
     Function Name   : validateUsername
@@ -278,20 +271,20 @@ const isExistingUser = async (inputUsername) => {
                  username and accordingly
                  return the result in an object.
 */
-const validateUsername = async (inputUsername) => {
+const validateUsername = async inputUsername => {
   let validationResult = {
     isNewUser: true,
-    failedMsg: "",
-  };
-
-  const userCheckResult = await isExistingUser(inputUsername);
-  if (userCheckResult.userExists) {
-    validationResult.isNewUser = false;
-    validationResult.failedMsg = "User already exists";
+    failedMsg: '',
   }
 
-  return validationResult;
-};
+  const userCheckResult = await isExistingUser(inputUsername)
+  if (userCheckResult.userExists) {
+    validationResult.isNewUser = false
+    validationResult.failedMsg = 'User already exists'
+  }
+
+  return validationResult
+}
 
 /*
     Function Name         : validatePassword
@@ -305,19 +298,19 @@ const validateUsername = async (inputUsername) => {
                  password and accordingly
                  return the result in an object.
 */
-const validatePassword = (inputPassword) => {
+const validatePassword = inputPassword => {
   let validationResult = {
     isValidPassword: true,
-    failedMsg: "",
-  };
-
-  if (inputPassword.length < 6) {
-    validationResult.isValidPassword = false;
-    validationResult.failedMsg = "Password is too short";
+    failedMsg: '',
   }
 
-  return validationResult;
-};
+  if (inputPassword.length < 6) {
+    validationResult.isValidPassword = false
+    validationResult.failedMsg = 'Password is too short'
+  }
+
+  return validationResult
+}
 
 /*
     Function Name         : verifyLoginPassword
@@ -341,28 +334,25 @@ const verifyLoginCredentials = async (inputUsername, inputPassword) => {
   const loginCredentialsCheckResult = {
     isUsernameValid: true,
     isPasswordValid: true,
-  };
+  }
 
-  const userCheckResult = await isExistingUser(inputUsername);
+  const userCheckResult = await isExistingUser(inputUsername)
   if (!userCheckResult.userExists) {
-    loginCredentialsCheckResult.isUsernameValid = false;
-    loginCredentialsCheckResult.isPasswordValid = false;
+    loginCredentialsCheckResult.isUsernameValid = false
+    loginCredentialsCheckResult.isPasswordValid = false
   } else {
     // valid username
-    const userDataFromDB = userCheckResult.existingUserData;
-    const hashedPassword = userDataFromDB.password;
+    const userDataFromDB = userCheckResult.existingUserData
+    const hashedPassword = userDataFromDB.password
 
-    let isMatchingPassword = await bcrypt.compare(
-      inputPassword,
-      hashedPassword
-    );
+    let isMatchingPassword = await bcrypt.compare(inputPassword, hashedPassword)
     if (!isMatchingPassword) {
-      loginCredentialsCheckResult.isPasswordValid = false;
+      loginCredentialsCheckResult.isPasswordValid = false
     }
   }
 
-  return loginCredentialsCheckResult;
-};
+  return loginCredentialsCheckResult
+}
 
 /*
     Function Name           : getLikesDataOfSpecificTweet
@@ -374,7 +364,7 @@ const verifyLoginCredentials = async (inputUsername, inputPassword) => {
     Description: Function to fetch list of tweet-like 
                  data objects from the "like" table.
 */
-const getLikesDataOfSpecificTweet = async (requestedTweetId) => {
+const getLikesDataOfSpecificTweet = async requestedTweetId => {
   const queryToFetchLikeDataOfSpecificTweet = `
     SELECT
         *
@@ -382,13 +372,13 @@ const getLikesDataOfSpecificTweet = async (requestedTweetId) => {
         like
     WHERE
         tweet_id = ${requestedTweetId};
-    `;
+    `
 
   const likesDataFOrSpecificTweet = await twitterCloneDBConnectionObj.all(
-    queryToFetchLikeDataOfSpecificTweet
-  );
-  return likesDataFOrSpecificTweet;
-};
+    queryToFetchLikeDataOfSpecificTweet,
+  )
+  return likesDataFOrSpecificTweet
+}
 
 /*
     Function Name           : getRepliesDataOfSpecificTweet
@@ -400,7 +390,7 @@ const getLikesDataOfSpecificTweet = async (requestedTweetId) => {
     Description: Function to fetch list of tweet-reply 
                  data objects from the "reply" table.
 */
-const getRepliesDataOfSpecificTweet = async (requestedTweetId) => {
+const getRepliesDataOfSpecificTweet = async requestedTweetId => {
   const queryToFetchReplyDataOfSpecificTweet = `
     SELECT
         *
@@ -408,13 +398,13 @@ const getRepliesDataOfSpecificTweet = async (requestedTweetId) => {
         reply
     WHERE
         tweet_id = ${requestedTweetId};
-    `;
+    `
 
   const repliesDataFOrSpecificTweet = await twitterCloneDBConnectionObj.all(
-    queryToFetchReplyDataOfSpecificTweet
-  );
-  return repliesDataFOrSpecificTweet;
-};
+    queryToFetchReplyDataOfSpecificTweet,
+  )
+  return repliesDataFOrSpecificTweet
+}
 
 /*
     End-Point 1: POST /register
@@ -424,25 +414,25 @@ const getRepliesDataOfSpecificTweet = async (requestedTweetId) => {
     checks in place to validate
     input username and password
 */
-app.post("/register", async (req, res) => {
-  const { username, password, name, gender } = req.body;
+app.post('/register', async (req, res) => {
+  const {username, password, name, gender} = req.body
 
-  const usernameValidationResult = await validateUsername(username);
+  const usernameValidationResult = await validateUsername(username)
 
   if (!usernameValidationResult.isNewUser) {
-    res.status(400);
-    res.send(usernameValidationResult.failedMsg);
+    res.status(400)
+    res.send(usernameValidationResult.failedMsg)
   } else {
-    const passwordValidationResult = validatePassword(password);
+    const passwordValidationResult = validatePassword(password)
 
     if (!passwordValidationResult.isValidPassword) {
-      res.status(400);
-      res.send(passwordValidationResult.failedMsg);
+      res.status(400)
+      res.send(passwordValidationResult.failedMsg)
     } else {
       const hashedPassword = await bcrypt.hash(
         password,
-        SALT_ROUNDS_FOR_PASSWORD_HASHING
-      );
+        SALT_ROUNDS_FOR_PASSWORD_HASHING,
+      )
 
       const queryToAddNewUser = `
         INSERT INTO
@@ -450,16 +440,15 @@ app.post("/register", async (req, res) => {
         VALUES
             ('${username}', '${hashedPassword}', '${name}', '${gender}');
         
-        `;
+        `
 
-      const addNewUserDBResponse = await twitterCloneDBConnectionObj.run(
-        queryToAddNewUser
-      );
+      const addNewUserDBResponse =
+        await twitterCloneDBConnectionObj.run(queryToAddNewUser)
 
-      res.send("User created successfully");
+      res.send('User created successfully')
     } // End of else-part of inner if-statement with condition: (!passwordValidationResult.isValidPassword)
   } // End of else-part of outer if-statement with condition: (!usernameValidationResult.isNewUser)
-});
+})
 
 /*
     End-Point 2: POST /login
@@ -468,29 +457,29 @@ app.post("/register", async (req, res) => {
     input credentials, after
     verification of the same
 */
-app.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+app.post('/login', async (req, res) => {
+  const {username, password} = req.body
 
   const loginCredentialsCheckResult = await verifyLoginCredentials(
     username,
-    password
-  );
+    password,
+  )
   if (!loginCredentialsCheckResult.isUsernameValid) {
-    res.status(400);
-    res.send("Invalid user");
+    res.status(400)
+    res.send('Invalid user')
   } else if (!loginCredentialsCheckResult.isPasswordValid) {
-    res.status(400);
-    res.send("Invalid password");
+    res.status(400)
+    res.send('Invalid password')
   } else {
     // login success !
-    const userIdentifiablePayload = { username };
+    const userIdentifiablePayload = {username}
     const jwtToken = jwt.sign(
       userIdentifiablePayload,
-      AUTHORIZATION_SECRET_FOR_JWT
-    );
-    res.send({ jwtToken });
+      AUTHORIZATION_SECRET_FOR_JWT,
+    )
+    res.send({jwtToken})
   }
-});
+})
 
 /*
     End-Point 3  : GET /user/tweets/feed
@@ -502,23 +491,22 @@ app.post("/login", async (req, res) => {
 
 */
 app.get(
-  "/user/tweets/feed",
+  '/user/tweets/feed',
   checkUserRequestAuthorization,
   async (req, res) => {
-    const { username } = req; // username property
+    const {username} = req // username property
     // added by checkUserRequestAuthorization
     // middleware to req object.
 
-    const listOfFollowingUserIdObjects = await getListOfFollowingUserIdObjectsForSpecificUser(
-      username
-    );
+    const listOfFollowingUserIdObjects =
+      await getListOfFollowingUserIdObjectsForSpecificUser(username)
 
     const listOfFollowingUserIds = listOfFollowingUserIdObjects.map(
-      (currentFollowingUserIdObject) =>
-        currentFollowingUserIdObject.following_user_id.toString()
-    );
+      currentFollowingUserIdObject =>
+        currentFollowingUserIdObject.following_user_id.toString(),
+    )
 
-    const followingUserIdsString = listOfFollowingUserIds.join(", ");
+    const followingUserIdsString = listOfFollowingUserIds.join(', ')
 
     const queryToFetchLatest4TweetsFromFollowingUserIds = `
           SELECT
@@ -536,21 +524,21 @@ app.get(
           ORDER BY
             tweet.date_time DESC
           LIMIT 4;
-          `;
+          `
 
-    const latest4TweetsFromFollowingUserIds = await twitterCloneDBConnectionObj.all(
-      queryToFetchLatest4TweetsFromFollowingUserIds
-    );
-    const processedLatest4TweetsFromFollowingUserIds = latest4TweetsFromFollowingUserIds.map(
-      (currentTweet) => ({
+    const latest4TweetsFromFollowingUserIds =
+      await twitterCloneDBConnectionObj.all(
+        queryToFetchLatest4TweetsFromFollowingUserIds,
+      )
+    const processedLatest4TweetsFromFollowingUserIds =
+      latest4TweetsFromFollowingUserIds.map(currentTweet => ({
         username: currentTweet.username,
         tweet: currentTweet.tweet,
         dateTime: currentTweet.date_time,
-      })
-    );
-    res.send(processedLatest4TweetsFromFollowingUserIds);
-  }
-);
+      }))
+    res.send(processedLatest4TweetsFromFollowingUserIds)
+  },
+)
 
 /*
     End-Point 4  : GET /user/following
@@ -562,25 +550,24 @@ app.get(
     checks in place to check for 
     authorization through JSON Web Token
 */
-app.get("/user/following", checkUserRequestAuthorization, async (req, res) => {
-  const { username } = req;
+app.get('/user/following', checkUserRequestAuthorization, async (req, res) => {
+  const {username} = req
 
-  const listOfFollowingUserIdObjects = await getListOfFollowingUserIdObjectsForSpecificUser(
-    username
-  );
+  const listOfFollowingUserIdObjects =
+    await getListOfFollowingUserIdObjectsForSpecificUser(username)
 
   // Extract just the following_user_id's as
   // strings into an array.
   const listOfFollowingUserIds = listOfFollowingUserIdObjects.map(
-    (currentFollowingUserIdObject) =>
-      currentFollowingUserIdObject.following_user_id.toString()
-  );
+    currentFollowingUserIdObject =>
+      currentFollowingUserIdObject.following_user_id.toString(),
+  )
 
   // Combine all following_user_id's into a single
   // string, in order to be embedded into the
   // following query string literal WHERE clause,
   // to extract corresponding usernames.
-  const stringOfFollowingUserIds = listOfFollowingUserIds.join(",");
+  const stringOfFollowingUserIds = listOfFollowingUserIds.join(',')
 
   const queryToFetchCorrespondingNamesOfAllFollowingUserIds = `
   SELECT
@@ -589,14 +576,15 @@ app.get("/user/following", checkUserRequestAuthorization, async (req, res) => {
     user
   WHERE
     user_id IN (${stringOfFollowingUserIds});
-  `;
+  `
 
-  const listOfNameObjectsForFollowingUserIds = await twitterCloneDBConnectionObj.all(
-    queryToFetchCorrespondingNamesOfAllFollowingUserIds
-  );
+  const listOfNameObjectsForFollowingUserIds =
+    await twitterCloneDBConnectionObj.all(
+      queryToFetchCorrespondingNamesOfAllFollowingUserIds,
+    )
 
-  res.send(listOfNameObjectsForFollowingUserIds);
-});
+  res.send(listOfNameObjectsForFollowingUserIds)
+})
 
 /*
     End-Point 5  : GET /user/followers
@@ -606,11 +594,11 @@ app.get("/user/following", checkUserRequestAuthorization, async (req, res) => {
     To fetch list of usernames of users
     that follow the logged in user 
 */
-app.get("/user/followers", checkUserRequestAuthorization, async (req, res) => {
-  const { username } = req;
+app.get('/user/followers', checkUserRequestAuthorization, async (req, res) => {
+  const {username} = req
 
-  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username);
-  const { user_id } = loggedInUserDetails;
+  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username)
+  const {user_id} = loggedInUserDetails
 
   const queryToFetchListOfFollowerUserIdObjectsForLoggedInUser = `
     SELECT
@@ -619,20 +607,20 @@ app.get("/user/followers", checkUserRequestAuthorization, async (req, res) => {
         follower
     WHERE
         following_user_id = ${user_id};
-    `;
+    `
 
   const listOfFollowerUserIdObjects = await twitterCloneDBConnectionObj.all(
-    queryToFetchListOfFollowerUserIdObjectsForLoggedInUser
-  );
+    queryToFetchListOfFollowerUserIdObjectsForLoggedInUser,
+  )
 
   // Get list of follower_user_id's as strings
   // to be joined into a single string and used
   // in the following query to fetch list of names
   // of follower_user_id's
   const listOfFollowerUserIdsAsStrings = listOfFollowerUserIdObjects.map(
-    (currentUserId) => currentUserId.follower_user_id.toString()
-  );
-  const stringOfFollowerUserIds = listOfFollowerUserIdsAsStrings.join(",");
+    currentUserId => currentUserId.follower_user_id.toString(),
+  )
+  const stringOfFollowerUserIds = listOfFollowerUserIdsAsStrings.join(',')
 
   const queryToFetchListOfNameObjectsOfAllFollowerUserIds = `
     SELECT
@@ -641,13 +629,14 @@ app.get("/user/followers", checkUserRequestAuthorization, async (req, res) => {
         user
     WHERE
         user_id IN (${stringOfFollowerUserIds});
-    `;
+    `
 
-  const listOfNameObjectsOfAllFollowerUserIds = await twitterCloneDBConnectionObj.all(
-    queryToFetchListOfNameObjectsOfAllFollowerUserIds
-  );
-  res.send(listOfNameObjectsOfAllFollowerUserIds);
-});
+  const listOfNameObjectsOfAllFollowerUserIds =
+    await twitterCloneDBConnectionObj.all(
+      queryToFetchListOfNameObjectsOfAllFollowerUserIds,
+    )
+  res.send(listOfNameObjectsOfAllFollowerUserIds)
+})
 
 /*
     End-Point 6  : GET /tweets/:tweetId
@@ -660,33 +649,31 @@ app.get("/user/followers", checkUserRequestAuthorization, async (req, res) => {
     followed by logged in user.
 */
 app.get(
-  "/tweets/:tweetId",
+  '/tweets/:tweetId',
   checkUserRequestAuthorization,
   isTweetPostedByAFollowingUser,
   async (req, res) => {
-    const { requestedTweetData } = req;
-    const { tweet_id } = requestedTweetData;
+    const {requestedTweetData} = req
+    const {tweet_id} = requestedTweetData
 
-    const likesDataOfRequestedTweet = await getLikesDataOfSpecificTweet(
-      tweet_id
-    );
-    const repliesDataOfRequestedTweet = await getRepliesDataOfSpecificTweet(
-      tweet_id
-    );
+    const likesDataOfRequestedTweet =
+      await getLikesDataOfSpecificTweet(tweet_id)
+    const repliesDataOfRequestedTweet =
+      await getRepliesDataOfSpecificTweet(tweet_id)
 
-    const numberOfLikes = likesDataOfRequestedTweet.length;
-    const numberOfReplies = repliesDataOfRequestedTweet.length;
+    const numberOfLikes = likesDataOfRequestedTweet.length
+    const numberOfReplies = repliesDataOfRequestedTweet.length
 
     const requestedTweetAndRelatedData = {
       tweet: requestedTweetData.tweet,
       likes: numberOfLikes,
       replies: numberOfReplies,
       dateTime: requestedTweetData.date_time,
-    };
+    }
 
-    res.send(requestedTweetAndRelatedData);
-  }
-);
+    res.send(requestedTweetAndRelatedData)
+  },
+)
 
 /*
   End-Point 7  : GET /tweets/:tweetId/likes
@@ -700,26 +687,24 @@ app.get(
   the logged in user follows.  
 */
 app.get(
-  "/tweets/:tweetId/likes",
+  '/tweets/:tweetId/likes',
   checkUserRequestAuthorization,
   isTweetPostedByAFollowingUser,
   async (req, res) => {
-    const { requestedTweetData } = req; // requestedTweetData added by middleware: isTweetPostedByAFollowingUser
-    const tweetId = requestedTweetData.tweet_id;
+    const {requestedTweetData} = req // requestedTweetData added by middleware: isTweetPostedByAFollowingUser
+    const tweetId = requestedTweetData.tweet_id
 
-    const likesDataOfRequestedTweet = await getLikesDataOfSpecificTweet(
-      tweetId
-    );
+    const likesDataOfRequestedTweet = await getLikesDataOfSpecificTweet(tweetId)
 
     // Extract user_id's as strings and
     // combine all into a string to be
     // used in the following query.
-    const listOfUserIdsAsStringsFromTweetLikesData = likesDataOfRequestedTweet.map(
-      (currentLikeData) => currentLikeData.user_id.toString()
-    );
-    const stringOfAllUserIds = listOfUserIdsAsStringsFromTweetLikesData.join(
-      ", "
-    );
+    const listOfUserIdsAsStringsFromTweetLikesData =
+      likesDataOfRequestedTweet.map(currentLikeData =>
+        currentLikeData.user_id.toString(),
+      )
+    const stringOfAllUserIds =
+      listOfUserIdsAsStringsFromTweetLikesData.join(', ')
 
     const queryToFetchUsernamesOfUsersThatLikedRequestedTweet = `
     SELECT
@@ -728,22 +713,22 @@ app.get(
         user
     WHERE
         user_id IN (${stringOfAllUserIds});
-    `;
+    `
 
     const listOfUsernameObjects = await twitterCloneDBConnectionObj.all(
-      queryToFetchUsernamesOfUsersThatLikedRequestedTweet
-    );
+      queryToFetchUsernamesOfUsersThatLikedRequestedTweet,
+    )
     const listOfUsernames = listOfUsernameObjects.map(
-      (currentUsernameObj) => currentUsernameObj.username
-    );
+      currentUsernameObj => currentUsernameObj.username,
+    )
 
     const requestedLikesData = {
       likes: listOfUsernames,
-    };
+    }
 
-    res.send(requestedLikesData);
-  }
-);
+    res.send(requestedLikesData)
+  },
+)
 
 /*
   End-Point 8  : GET /tweets/:tweetId/replies
@@ -756,27 +741,26 @@ app.get(
   the logged in user follows. 
 */
 app.get(
-  "/tweets/:tweetId/replies",
+  '/tweets/:tweetId/replies',
   checkUserRequestAuthorization,
   isTweetPostedByAFollowingUser,
   async (req, res) => {
-    const { requestedTweetData } = req;
-    const tweetId = requestedTweetData.tweet_id;
+    const {requestedTweetData} = req
+    const tweetId = requestedTweetData.tweet_id
 
-    const repliesDataOfRequestedTweet = await getRepliesDataOfSpecificTweet(
-      tweetId
-    );
+    const repliesDataOfRequestedTweet =
+      await getRepliesDataOfSpecificTweet(tweetId)
 
     // Extract user ids from the replies data
     // as strings and combine them all into a
     // single string to be used in the following
     // query.
-    const listOfUserIdStringsThatRepliedToRequestedTweet = repliesDataOfRequestedTweet.map(
-      (currentReplyData) => currentReplyData.user_id.toString()
-    );
-    const stringOfAllUserIds = listOfUserIdStringsThatRepliedToRequestedTweet.join(
-      ", "
-    );
+    const listOfUserIdStringsThatRepliedToRequestedTweet =
+      repliesDataOfRequestedTweet.map(currentReplyData =>
+        currentReplyData.user_id.toString(),
+      )
+    const stringOfAllUserIds =
+      listOfUserIdStringsThatRepliedToRequestedTweet.join(', ')
 
     const queryToFetchNameOfUserAndReplyTextForAllReplies = `
     SELECT
@@ -790,19 +774,20 @@ app.get(
         reply.user_id IN (${stringOfAllUserIds})
         AND
         reply.tweet_id = ${tweetId};
-    `;
+    `
 
-    const listOfNameOfUserAndReplyTextDataObjects = await twitterCloneDBConnectionObj.all(
-      queryToFetchNameOfUserAndReplyTextForAllReplies
-    );
+    const listOfNameOfUserAndReplyTextDataObjects =
+      await twitterCloneDBConnectionObj.all(
+        queryToFetchNameOfUserAndReplyTextForAllReplies,
+      )
 
     const requestedRepliesData = {
       replies: listOfNameOfUserAndReplyTextDataObjects,
-    };
+    }
 
-    res.send(requestedRepliesData);
-  }
-);
+    res.send(requestedRepliesData)
+  },
+)
 
 /*
   End-Point 9  : GET /user/tweets
@@ -816,10 +801,10 @@ app.get(
   replies and the date_time
   it was posted.
 */
-app.get("/user/tweets", checkUserRequestAuthorization, async (req, res) => {
-  const { username } = req;
-  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username);
-  const userId = loggedInUserDetails.user_id;
+app.get('/user/tweets', checkUserRequestAuthorization, async (req, res) => {
+  const {username} = req
+  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username)
+  const userId = loggedInUserDetails.user_id
 
   const queryToGetAllTweetRelatedForLoggedInUser = `
     SELECT
@@ -835,22 +820,22 @@ app.get("/user/tweets", checkUserRequestAuthorization, async (req, res) => {
         tweet
     WHERE
         user_id = ${userId};
-    `;
+    `
 
-  const listOfAllTweetsPostedByLoggedInUser = await twitterCloneDBConnectionObj.all(
-    queryToGetAllTweetRelatedForLoggedInUser
-  );
-  const processedListOfAllTweetsPostedByLoggedInUser = listOfAllTweetsPostedByLoggedInUser.map(
-    (currentTweetData) => ({
+  const listOfAllTweetsPostedByLoggedInUser =
+    await twitterCloneDBConnectionObj.all(
+      queryToGetAllTweetRelatedForLoggedInUser,
+    )
+  const processedListOfAllTweetsPostedByLoggedInUser =
+    listOfAllTweetsPostedByLoggedInUser.map(currentTweetData => ({
       tweet: currentTweetData.tweet,
       likes: currentTweetData.likes,
       replies: currentTweetData.replies,
       dateTime: currentTweetData.date_time,
-    })
-  );
+    }))
 
-  res.send(processedListOfAllTweetsPostedByLoggedInUser);
-});
+  res.send(processedListOfAllTweetsPostedByLoggedInUser)
+})
 
 /*
     End-Point 10 : POST /user/tweets
@@ -859,37 +844,37 @@ app.get("/user/tweets", checkUserRequestAuthorization, async (req, res) => {
     -------------------------------------
     To add new tweet to the tweet table
 */
-app.post("/user/tweets", checkUserRequestAuthorization, async (req, res) => {
-  const { username } = req;
+app.post('/user/tweets', checkUserRequestAuthorization, async (req, res) => {
+  const {username} = req
 
-  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username);
-  const userId = loggedInUserDetails.user_id;
+  const loggedInUserDetails = await getSpecificUserDetailsFromDB(username)
+  const userId = loggedInUserDetails.user_id
 
-  const { tweet } = req.body;
+  const {tweet} = req.body
 
-  const currentDateTime = new Date();
-  const currentFullYear = currentDateTime.getFullYear();
-  const currentMonth = currentDateTime.getMonth();
-  const currentDay = currentDateTime.getDate();
-  const currentHour = currentDateTime.getHours();
-  const currentMinuteCount = currentDateTime.getMinutes();
-  const currentSecondCount = currentDateTime.getSeconds();
+  const currentDateTime = new Date()
+  const currentFullYear = currentDateTime.getFullYear()
+  const currentMonth = currentDateTime.getMonth()
+  const currentDay = currentDateTime.getDate()
+  const currentHour = currentDateTime.getHours()
+  const currentMinuteCount = currentDateTime.getMinutes()
+  const currentSecondCount = currentDateTime.getSeconds()
 
-  const formattedCurrentDateTime = `${currentFullYear}-${currentMonth}-${currentDay} ${currentHour}:${currentMinuteCount}:${currentSecondCount}`;
+  const formattedCurrentDateTime = `${currentFullYear}-${currentMonth}-${currentDay} ${currentHour}:${currentMinuteCount}:${currentSecondCount}`
 
   const queryToAddNewTweetData = `
     INSERT INTO
         tweet (tweet, user_id, date_time)
     VALUES
         ('${tweet}', ${userId}, '${formattedCurrentDateTime}');
-    `;
+    `
 
   const addNewTweetDBResponse = await twitterCloneDBConnectionObj.run(
-    queryToAddNewTweetData
-  );
+    queryToAddNewTweetData,
+  )
 
-  res.send("Created a Tweet");
-});
+  res.send('Created a Tweet')
+})
 
 /*
     End-Point 11 : DELETE /tweets/:tweetId
@@ -902,15 +887,15 @@ app.post("/user/tweets", checkUserRequestAuthorization, async (req, res) => {
     user being followed by logged in user. 
 */
 app.delete(
-  "/tweets/:tweetId",
+  '/tweets/:tweetId',
   checkUserRequestAuthorization,
   isTweetPostedByLoggedInUser,
   async (req, res) => {
-    const { tweetId } = req.params;
-    const { username } = req;
+    const {tweetId} = req.params
+    const {username} = req
 
-    const loggedInUserDetails = await getSpecificUserDetailsFromDB(username);
-    const userId = loggedInUserDetails.user_id;
+    const loggedInUserDetails = await getSpecificUserDetailsFromDB(username)
+    const userId = loggedInUserDetails.user_id
 
     const queryToDeleteSpecificTweetPostedByLoggedInUser = `
     DELETE FROM
@@ -919,13 +904,13 @@ app.delete(
         tweet_id = ${tweetId}
         AND
         user_id = ${userId};
-    `;
+    `
 
     await twitterCloneDBConnectionObj.run(
-      queryToDeleteSpecificTweetPostedByLoggedInUser
-    );
-    res.send("Tweet Removed");
-  }
-);
+      queryToDeleteSpecificTweetPostedByLoggedInUser,
+    )
+    res.send('Tweet Removed')
+  },
+)
 
-module.exports = app;
+module.exports = app
